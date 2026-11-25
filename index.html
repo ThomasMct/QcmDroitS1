@@ -24,6 +24,23 @@
 .const-lesson > :last-child { margin-bottom: 0; }
 @media(max-width: 480px) { .const-lesson { padding: 18px 16px; line-height: 1.75; } .const-lesson h2 { padding: 12px; } .const-lesson ul, .const-lesson ol { padding-inline-start: 1.1em; } }
 .civil-part-heading { color:var(--c); font-size:1.16rem; margin:14px 0 2px; padding:12px 0 8px; border-bottom:1px solid var(--line); }
+
+.feedback-link { margin-top:24px; }
+.feedback-panel { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:clamp(16px,4vw,28px); display:grid; gap:20px; }
+.feedback-panel fieldset { border:0; padding:0; margin:0; min-width:0; }
+.feedback-panel legend,.feedback-panel .field-label { font-weight:600; display:block; margin-bottom:9px; }
+.feedback-options { display:grid; gap:9px; }
+.feedback-choice { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--line); border-radius:12px; cursor:pointer; }
+.feedback-choice:has(input:checked) { border-color:var(--c); background:color-mix(in srgb,var(--c) 9%,var(--surface)); }
+.feedback-choice input { margin:0 0 0 auto; accent-color:var(--c); width:18px; height:18px; flex:none; }
+.feedback-choice span { flex:1; }
+.feedback-panel select,.feedback-panel input[type=text],.feedback-panel textarea { display:block; width:100%; box-sizing:border-box; font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:12px; }
+.feedback-panel textarea { resize:vertical; min-height:130px; }
+.feedback-panel :is(select,textarea):focus-visible { outline:3px solid var(--c); outline-offset:2px; }
+.feedback-submit { background:var(--c); color:var(--on-c); border:0; border-radius:12px; padding:14px; font-weight:600; }
+.feedback-submit:disabled { opacity:.55; cursor:not-allowed; }
+.feedback-note { margin:0; text-align:center; color:var(--muted); font-size:.84rem; }
+.feedback-counter { text-align:right; margin:5px 0 0; }
 </style><title>QCM Révisions — L1 Droit</title>
 <meta name="description" content="Révise tes cours de L1 droit avec des QCM interactifs et des corrections immédiates.">
 <link rel="icon" type="image/png" href="favicon.png">
@@ -3628,7 +3645,8 @@ function homeView() {
   }).join("");
   return '<p class="brand">Révisions</p><h1 tabindex="-1" id="focus">Choisis une matière</h1>' +
     '<p class="lead">Révise en QCM ou en flashcards. Ton score est gardé sur cet appareil.</p>' +
-    '<div class="stack">' + cards + "</div>";
+    '<div class="stack">' + cards + "</div>" +
+    '<button class="card feedback-link" data-act="feedback" style="--c:var(--c-const)"><span class="emo" aria-hidden="true">💬</span><span class="ct"><h2>Suggestions et signalements</h2><span class="state off">Une idée, une erreur ou un problème ?</span></span><span class="chev" aria-hidden="true">›</span></button>';
 }
 
 function switchBtn(id, key, icon, title, onText, offText) {
@@ -3944,7 +3962,39 @@ function rate(ok) {
   }
 }
 
-var VIEWS = { home: homeView, mode: modeView, courses: coursesView, course: courseView, methodology: methodologyView, method: methodView, subject: subjectView, decks: decksView, quiz: quizView, result: resultView, card: cardView, cardresult: cardResultView };
+function feedbackView() {
+  var types = [["idea","💡 Suggestion d’amélioration"],["course","📚 Erreur dans un cours"],["qcm","📝 Erreur dans un QCM ou une flashcard"],["bug","🐛 Problème technique"],["other","💬 Autre retour"]];
+  var choices = types.map(function(t,i){return '<label class="feedback-choice"><span>'+esc(t[1])+'</span><input type="radio" name="type" value="'+t[0]+'"'+(i===0?' checked':'')+' required></label>';}).join('');
+  var subjects = SUBJECTS.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.emoji+' '+s.name)+'</option>';}).join('');
+  return '<button class="back" data-act="home">← Retour à l’accueil</button><div style="--c:var(--c-const)"><p class="brand">QCM Révisions — L1 Droit</p><div class="title-row"><span class="emo" aria-hidden="true">💬</span><h1 tabindex="-1" id="focus">Suggestions et signalements</h1></div><p class="lead">Une idée, une erreur ou un problème ? Aide-moi à améliorer le site.</p>'+ 
+  '<form id="feedback-form" class="feedback-panel"><fieldset><legend>Type de retour</legend><div class="feedback-options">'+choices+'</div></fieldset>'+ 
+  '<div><label class="field-label" for="feedback-subject">Matière concernée</label><select id="feedback-subject" name="subject" required><option value="" disabled selected>Choisis une matière</option><option value="general">🌐 Site en général</option>'+subjects+'</select></div>'+ 
+  '<div><label class="field-label" for="feedback-name">Prénom (facultatif)</label><input type="text" id="feedback-name" name="name" maxlength="80" placeholder="Anonyme" autocomplete="given-name"></div>'+ 
+  '<div><label class="field-label" for="feedback-message">Ton message</label><textarea id="feedback-message" name="message" rows="5" maxlength="2000" required placeholder="Décris ton idée ou le problème rencontré..."></textarea><p class="meta feedback-counter" id="feedback-count">0 / 2000</p></div>'+ 
+  '<div hidden aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div><button class="feedback-submit" type="submit">Envoyer mon retour →</button><p class="feedback-note">🔒 Aucun message n’est publié. Le prénom est facultatif.</p><p class="feedback-note" id="feedback-status" role="status" aria-live="polite"></p></form></div>';
+}
+app.addEventListener("input",function(e){if(e.target.id==="feedback-message"){document.getElementById("feedback-count").textContent=e.target.value.length+" / 2000";}});
+app.addEventListener("submit", async function(e) {
+  if(e.target.id !== "feedback-form") return;
+  e.preventDefault();
+  var form = e.target, btn = form.querySelector('button[type="submit"]'), status = form.querySelector('#feedback-status');
+  if(btn.disabled) return;
+  var data = new FormData(form), selected = form.querySelector('input[name="type"]:checked'), subject = form.querySelector('select[name="subject"]');
+  var payload = {type: selected.parentElement.querySelector('span').textContent, matiere: subject.options[subject.selectedIndex].textContent, prenom: String(data.get('name') || '').trim(), message: String(data.get('message') || '').trim(), website: String(data.get('website') || '')};
+  if(!payload.message){status.textContent = 'Écris un message avant de l’envoyer.'; return;}
+  btn.disabled = true; btn.textContent = 'Envoi en cours…'; status.textContent = '';
+  try {
+    var response = await fetch('https://script.google.com/macros/s/AKfycbzKL7WmYE6aM7WAs5cwqW9H_uFUFBc3AcN-32zDeOBIUlMFjlTj2gYX5K5WGQNqt0Nt/exec', {method:'POST', headers:{'Content-Type':'text/plain;charset=UTF-8'}, body:JSON.stringify(payload), redirect:'follow', credentials:'omit'});
+    if(!response.ok) throw new Error('HTTP '+response.status);
+    var result = await response.json();
+    if(result.success === true){form.reset(); form.querySelector('#feedback-count').textContent = '0 / 2000'; status.textContent = '✓ Merci ! Ton retour a bien été envoyé.';}
+    else {status.textContent = 'Envoi refusé : '+(result.message || 'Réessaie plus tard.');}
+  } catch(err) {
+    status.textContent = 'Impossible de confirmer l’envoi. Ton message est conservé ici. Vérifie ta connexion avant de réessayer (un envoi a peut-être déjà eu lieu).';
+  } finally {btn.disabled = false; btn.textContent = 'Envoyer mon retour →';}
+});
+
+var VIEWS = { home: homeView, feedback: feedbackView, mode: modeView, courses: coursesView, course: courseView, methodology: methodologyView, method: methodView, subject: subjectView, decks: decksView, quiz: quizView, result: resultView, card: cardView, cardresult: cardResultView };
 
 /* ---------- Rendu et actions ---------- */
 function render(focusId) {
@@ -3996,6 +4046,7 @@ app.addEventListener("click", function (e) {
   if (act === "flip" && t.id === "flip-card" && Date.now() < blockClickUntil) return;
   if (swipeBusy && (act === "flip" || act === "know" || act === "redo")) return;
   if (act === "home") { S.view = "home"; render(); }
+  else if (act === "feedback") { S.view = "feedback"; render(); }
   else if (act === "subject") { S.subject = t.getAttribute("data-id"); S.view = "mode"; render(); }
   else if (act === "modes") { S.view = "mode"; render(); }
   else if (act === "mode-cours") { S.view = "courses"; render(); }
