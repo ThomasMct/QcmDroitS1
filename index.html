@@ -216,6 +216,36 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--c, var(--c-
 .rev .a b { font-weight: 600; }
 .rev .no { color: var(--bad); }
 .rev .yes { color: var(--good); }
+/* Choix du mode */
+.modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; margin-top: 14px; }
+.mode {
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 16px;
+  padding: 20px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  text-align: left; cursor: pointer; min-width: 0;
+}
+.mode:hover { border-color: var(--c); }
+.mode .mi {
+  width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; font-size: 1.7rem; line-height: 1;
+  background: color-mix(in srgb, var(--c) 13%, var(--surface));
+}
+.mode h2 { font-size: 1.25rem; }
+.mode p { margin: 0; color: var(--muted); font-size: .92rem; }
+.mode .go { margin-top: 4px; color: var(--c); font-weight: 600; font-size: .92rem; }
+
+/* Flashcards */
+.fcard {
+  display: flex; flex-direction: column; justify-content: center; gap: 14px; width: 100%; min-height: 260px;
+  margin: 24px 0 0; padding: 28px 24px; text-align: left; cursor: pointer; min-width: 0;
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 18px;
+}
+.fcard:hover { border-color: var(--c); }
+.fcard .side { font-size: .78rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.fcard .txt { font-family: var(--display); font-weight: 600; font-size: clamp(1.25rem, 4vw, 1.65rem); line-height: 1.35; overflow-wrap: anywhere; text-wrap: balance; }
+.fcard .hint { color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
+.fcard.back-side { border-color: var(--c); background: color-mix(in srgb, var(--c) 9%, var(--surface)); }
+.fcard.back-side .side { color: var(--c); }
+.btn.know { background: var(--good); border-color: var(--good); color: var(--on-c); }
+.btn.redo { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
 @media (prefers-reduced-motion: reduce) { .bar i, .sw .track, .sw .track::after { transition: none; } }
 </style>
 
@@ -502,7 +532,8 @@ var LETTERS = ["A", "B", "C", "D"];
 var KEY = "qcm-revisions-v1";
 var app = document.getElementById("app");
 /* S.items : questions du QCM en cours, chacune avec l'ordre d'affichage de ses réponses (map) */
-var S = { view: "home", subject: null, qcm: null, items: [], i: 0, picks: [], shuffleQ: false, shuffleA: false, partial: false, last: null };
+var S = { view: "home", subject: null, qcm: null, items: [], i: 0, picks: [], shuffleQ: false, shuffleA: false, partial: false, last: null,
+  /* flashcards */ deck: null, cards: [], ci: 0, flipped: false, known: [], missed: [], shuffleC: false };
 
 function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function loadStats() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
@@ -533,7 +564,7 @@ function homeView() {
       '<span class="chev" aria-hidden="true">›</span></button>';
   }).join("");
   return '<p class="brand">Révisions</p><h1 tabindex="-1" id="focus">Choisis une matière</h1>' +
-    '<p class="lead">Entraîne-toi QCM par QCM. La correction s\'affiche après chaque réponse et ton score est gardé sur cet appareil.</p>' +
+    '<p class="lead">Révise en QCM ou en flashcards. Ton score est gardé sur cet appareil.</p>' +
     '<div class="stack">' + cards + "</div>";
 }
 
@@ -561,8 +592,8 @@ function subjectView() {
           plural(n, "question", "questions") + " · " + info + '</span></span><span class="go">' + (st ? "Refaire" : "Commencer") + "</span></button>";
       }).join("") + "</div>";
   }
-  return '<button class="back" data-act="home">← Toutes les matières</button>' +
-    '<div style="--c:var(' + s.color + ')"><div class="title-row"><span class="emo" aria-hidden="true">' + s.emoji + '</span><h1 tabindex="-1" id="focus" style="color:var(--c)">' + esc(s.name) + "</h1></div></div>" +
+  return '<button class="back" data-act="modes">← QCM ou flashcards</button>' +
+    '<div style="--c:var(' + s.color + ')"><p class="brand">QCM</p><div class="title-row"><span class="emo" aria-hidden="true">' + s.emoji + '</span><h1 tabindex="-1" id="focus" style="color:var(--c)">' + esc(s.name) + "</h1></div></div>" +
     '<div style="--c:var(' + s.color + ');margin-top:20px">' + body + "</div>";
 }
 
@@ -623,9 +654,121 @@ function resultView() {
     '<div class="actions">' + again + "</div>" + review + "</div>";
 }
 
+/* ---------- Choix du mode et flashcards ---------- */
+function decksOf(s) {
+  var decks = s.qcms.map(function (q) {
+    return { id: q.id, title: q.title, cards: q.questions.map(function (x) { return { q: x[0], a: x[1][x[2]] }; }) };
+  });
+  if (decks.length > 1) {
+    var all = [];
+    decks.forEach(function (d) { all = all.concat(d.cards); });
+    decks.unshift({ id: "all", title: "Toutes les séances", cards: all });
+  }
+  return decks;
+}
+
+function modeBtn(act, icon, title, text, info) {
+  return '<button class="mode" data-act="' + act + '"><span class="mi" aria-hidden="true">' + icon + "</span><h2>" + title + "</h2><p>" + text + '</p><span class="go">' + info + " ›</span></button>";
+}
+
+function modeView() {
+  var s = findSubject(S.subject);
+  var nq = s.qcms.reduce(function (n, q) { return n + q.questions.length; }, 0);
+  var qInfo = nq ? plural(s.qcms.length, "QCM", "QCM") + " · " + plural(nq, "question", "questions") : "Bientôt disponible";
+  var fInfo = nq ? plural(nq, "carte", "cartes") : "Bientôt disponible";
+  return '<button class="back" data-act="home">← Toutes les matières</button>' +
+    '<div style="--c:var(' + s.color + ')">' +
+    '<div class="title-row"><span class="emo" aria-hidden="true">' + s.emoji + '</span><h1 tabindex="-1" id="focus" style="color:var(--c)">' + esc(s.name) + "</h1></div>" +
+    '<p class="lead" style="margin:14px 0 0">Comment veux-tu réviser ?</p>' +
+    '<div class="modes">' +
+    modeBtn("mode-qcm", "📝", "QCM", "Réponds à des questions à choix multiples avec la correction après chaque réponse.", qInfo) +
+    modeBtn("mode-cards", "🃏", "Flashcards", "Lis la question, retourne la carte, puis note si tu connaissais la réponse.", fInfo) +
+    "</div></div>";
+}
+
+function decksView() {
+  var s = findSubject(S.subject), decks = decksOf(s), body;
+  if (!decks.length) {
+    body = '<div class="empty">Cette matière n\'a pas encore de cartes. Elles sont créées automatiquement à partir de tes QCM.</div>';
+  } else {
+    body = '<div class="switches">' + switchBtn("sw-c", "shuffleC", "🔀", "Mélanger les cartes", "Ordre aléatoire", "Ordre du cours") + "</div>" +
+      '<div class="list">' + decks.map(function (d) {
+        return '<button class="row" data-act="deck-start" data-id="' + d.id + '"><span class="rt"><strong>' + esc(d.title) + '</strong><span class="meta">' +
+          plural(d.cards.length, "carte", "cartes") + '</span></span><span class="go">Commencer</span></button>';
+      }).join("") + "</div>";
+  }
+  return '<button class="back" data-act="modes">← QCM ou flashcards</button>' +
+    '<div style="--c:var(' + s.color + ')"><p class="brand">Flashcards</p><div class="title-row"><span class="emo" aria-hidden="true">' + s.emoji + '</span><h1 tabindex="-1" id="focus" style="color:var(--c)">' + esc(s.name) + "</h1></div></div>" +
+    '<div style="--c:var(' + s.color + ');margin-top:20px">' + body + "</div>";
+}
+
+function cardView() {
+  var s = findSubject(S.subject), d = S.deck, total = S.cards.length;
+  var c = d.cards[S.cards[S.ci]], fl = S.flipped;
+  var knownN = S.known.filter(Boolean).length;
+  var face = fl
+    ? '<span class="side">Réponse</span><span class="txt">' + esc(c.a) + '</span><span class="hint">' + esc(c.q) + "</span>"
+    : '<span class="side">Question</span><span class="txt">' + esc(c.q) + '</span><span class="hint">Touche la carte pour la retourner</span>';
+  var actions = fl
+    ? '<button class="btn redo" data-act="redo">À revoir</button><button class="btn know" data-act="know">Je savais</button>'
+    : '<button class="btn" data-act="flip">Retourner la carte</button>';
+  return '<div style="--c:var(' + s.color + ')">' +
+    '<button class="back" data-act="decks">← Quitter ce paquet</button>' +
+    '<div class="qhead"><span><strong>Carte ' + (S.ci + 1) + "</strong> sur " + total + "</span><span>" + esc(d.title) + " · " + knownN + " sue" + (knownN > 1 ? "s" : "") + "</span></div>" +
+    '<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="' + total + '" aria-valuenow="' + S.ci + '"><i style="width:' + ((S.ci / total) * 100) + '%"></i></div>' +
+    '<button class="fcard' + (fl ? " back-side" : "") + '" id="flip-card" data-act="flip">' + face + "</button>" +
+    '<div class="actions">' + actions + "</div>" +
+    (fl ? '<p class="meta" style="margin:12px 0 0">Raccourcis : ← À revoir · → Je savais</p>' : "") + "</div>";
+}
+
+function cardResultView() {
+  var s = findSubject(S.subject), d = S.deck, total = S.cards.length;
+  var known = S.known.filter(Boolean).length, missed = S.missed;
+  var pct = Math.round((known / total) * 100);
+  var verdict = pct >= 80 ? "Très bien mémorisé." : pct >= 60 ? "Presque : reprends les cartes à revoir." : "À retravailler : refais les cartes à revoir.";
+  var review = "";
+  if (missed.length) {
+    review = '<div class="review"><h2>À revoir (' + missed.length + ")</h2>" + missed.map(function (ci) {
+      var c = d.cards[ci];
+      return '<div class="rev"><p>' + esc(c.q) + '</p><div class="a yes"><b>Réponse :</b> ' + esc(c.a) + "</div></div>";
+    }).join("") + "</div>";
+  }
+  var again = '<button class="btn" data-act="deck-retry">Refaire le paquet</button>' +
+    (missed.length ? '<button class="btn ghost" data-act="deck-retry-missed">Refaire les cartes à revoir</button>' : "") +
+    '<button class="btn ghost" data-act="decks">Retour aux paquets</button>';
+  return '<div style="--c:var(' + s.color + ')"><p class="brand">' + esc(s.name) + " · Flashcards</p>" +
+    '<h1 tabindex="-1" id="focus">' + esc(d.title) + "</h1>" +
+    '<div class="score">' + known + "<small>/" + total + "</small></div>" +
+    '<p class="verdict">' + pct + " % de cartes sues. " + verdict + "</p>" +
+    '<div class="actions">' + again + "</div>" + review + "</div>";
+}
+
+function startDeck(id, only) {
+  var s = findSubject(S.subject), d = decksOf(s).filter(function (x) { return x.id === id; })[0];
+  var idx = d.cards.map(function (_, k) { return k; });
+  if (only) idx = idx.filter(function (k) { return only.indexOf(k) !== -1; });
+  if (S.shuffleC) idx = shuffleArr(idx);
+  S.deck = d; S.cards = idx; S.ci = 0; S.flipped = false; S.known = []; S.missed = []; S.view = "card";
+  render("flip-card");
+}
+
+function rate(ok) {
+  S.known[S.ci] = ok;
+  if (S.ci === S.cards.length - 1) {
+    S.missed = S.cards.filter(function (ci, pos) { return !S.known[pos]; });
+    S.view = "cardresult";
+    render();
+  } else {
+    S.ci++; S.flipped = false;
+    render("flip-card");
+  }
+}
+
+var VIEWS = { home: homeView, mode: modeView, subject: subjectView, decks: decksView, quiz: quizView, result: resultView, card: cardView, cardresult: cardResultView };
+
 /* ---------- Rendu et actions ---------- */
 function render(focusId) {
-  app.innerHTML = S.view === "home" ? homeView() : S.view === "subject" ? subjectView() : S.view === "quiz" ? quizView() : resultView();
+  app.innerHTML = VIEWS[S.view]();
   var el = document.getElementById(focusId || "focus");
   if (el) { try { el.focus({ preventScroll: !!focusId }); } catch (e) {} }
   if (!focusId) window.scrollTo(0, 0);
@@ -670,7 +813,16 @@ app.addEventListener("click", function (e) {
   if (!t) return;
   var act = t.getAttribute("data-act");
   if (act === "home") { S.view = "home"; render(); }
-  else if (act === "subject") { S.subject = t.getAttribute("data-id"); S.view = "subject"; render(); }
+  else if (act === "subject") { S.subject = t.getAttribute("data-id"); S.view = "mode"; render(); }
+  else if (act === "modes") { S.view = "mode"; render(); }
+  else if (act === "mode-qcm") { S.view = "subject"; render(); }
+  else if (act === "mode-cards" || act === "decks") { S.view = "decks"; render(); }
+  else if (act === "deck-start") { startDeck(t.getAttribute("data-id"), null); }
+  else if (act === "flip") { S.flipped = !S.flipped; render("flip-card"); }
+  else if (act === "know") { rate(true); }
+  else if (act === "redo") { rate(false); }
+  else if (act === "deck-retry") { startDeck(S.deck.id, null); }
+  else if (act === "deck-retry-missed") { startDeck(S.deck.id, S.missed); }
   else if (act === "toggle") { var key = t.getAttribute("data-k"); S[key] = !S[key]; render(t.id); }
   else if (act === "start") { start(t.getAttribute("data-id"), null); }
   else if (act === "quit") { S.view = "subject"; render(); }
@@ -685,6 +837,11 @@ app.addEventListener("click", function (e) {
 });
 
 document.addEventListener("keydown", function (e) {
+  if (S.view === "card" && S.flipped && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === "ArrowLeft" || e.key === "1") { e.preventDefault(); rate(false); }
+    else if (e.key === "ArrowRight" || e.key === "2") { e.preventDefault(); rate(true); }
+    return;
+  }
   if (S.view !== "quiz" || e.ctrlKey || e.metaKey || e.altKey) return;
   var locked = S.picks[S.i] !== undefined && S.picks[S.i] !== null;
   var k = e.key.toLowerCase(), idx = k.length === 1 ? "abcd".indexOf(k) : -1;
