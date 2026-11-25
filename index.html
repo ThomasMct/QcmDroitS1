@@ -41,6 +41,14 @@
 .feedback-submit:disabled { opacity:.55; cursor:not-allowed; }
 .feedback-note { margin:0; text-align:center; color:var(--muted); font-size:.84rem; }
 .feedback-counter { text-align:right; margin:5px 0 0; }
+.feedback-success { text-align:center; padding:clamp(28px,6vw,48px) 20px; gap:16px; border:1px solid #159582; border-top:4px solid #159582; background:var(--surface); }
+.feedback-success-icon { display:grid; place-items:center; margin:0 auto; width:76px; height:76px; border-radius:50%; background:#137c62; color:white; font-size:42px; font-weight:700; }
+.feedback-success h2 { font-family:var(--display); font-size:clamp(1.5rem,5vw,2rem); line-height:1.3; margin:0; color:var(--fg); }
+.feedback-success p { color:var(--muted); margin:0 0 8px; }
+.feedback-success .feedback-secondary { background:var(--surface); color:var(--fg); border:1px solid var(--line); border-radius:12px; padding:13px; font:inherit; cursor:pointer; }
+.feedback-panel[hidden] { display:none; }
+#feedback-status:not(:empty) { padding:12px; border:1px solid var(--line); border-radius:10px; color:var(--fg); font-size:.95rem; }
+
 </style><title>QCM Révisions — L1 Droit</title>
 <meta name="description" content="Révise tes cours de L1 droit avec des QCM interactifs et des corrections immédiates.">
 <link rel="icon" type="image/png" href="favicon.png">
@@ -3987,7 +3995,17 @@ app.addEventListener("submit", async function(e) {
     var response = await fetch('https://script.google.com/macros/s/AKfycbzKL7WmYE6aM7WAs5cwqW9H_uFUFBc3AcN-32zDeOBIUlMFjlTj2gYX5K5WGQNqt0Nt/exec', {method:'POST', headers:{'Content-Type':'text/plain;charset=UTF-8'}, body:JSON.stringify(payload), redirect:'follow', credentials:'omit'});
     if(!response.ok) throw new Error('HTTP '+response.status);
     var result = await response.json();
-    if(result.success === true){form.reset(); form.querySelector('#feedback-count').textContent = '0 / 2000'; status.textContent = '✓ Merci ! Ton retour a bien été envoyé.';}
+    if(result.success === true){
+      if(!form.isConnected) return;
+      var confirmation = document.createElement('section');
+      confirmation.className = 'feedback-panel feedback-success';
+      confirmation.setAttribute('aria-labelledby','feedback-success-title');
+      confirmation.style.setProperty('--c','var(--c-const)');
+      confirmation.innerHTML = '<span class="feedback-success-icon" aria-hidden="true">✓</span><h2 id="feedback-success-title" tabindex="-1" role="status">Merci ! Ton retour a bien été envoyé.</h2><p>Merci de contribuer à l’amélioration du site.</p><button class="feedback-submit" data-act="home">Retour à l’accueil</button><button class="feedback-secondary" data-act="feedback">Envoyer un autre retour</button>';
+      form.replaceWith(confirmation);
+      confirmation.querySelector('h2').focus({preventScroll:true});
+      window.scrollTo(0,0);
+    }
     else {status.textContent = 'Envoi refusé : '+(result.message || 'Réessaie plus tard.');}
   } catch(err) {
     status.textContent = 'Impossible de confirmer l’envoi. Ton message est conservé ici. Vérifie ta connexion avant de réessayer (un envoi a peut-être déjà eu lieu).';
